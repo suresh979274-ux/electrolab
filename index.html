@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ElectroLab 3D</title>
+<script type="importmap">
+{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+</script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#09111f;color:#eaf2ff;font:14px Arial;overflow:hidden}
+header{height:55px;background:#101d31;border-bottom:1px solid #2c405e;display:flex;align-items:center;gap:7px;padding:8px;flex-wrap:wrap}
+.logo{font-size:17px;font-weight:bold;color:#64b5ff;margin-right:auto}
+button,input,select,textarea{font:inherit}button{background:#20344f;color:white;border:1px solid #385477;border-radius:7px;padding:8px;cursor:pointer}
+button:hover{background:#31547c}
+main{height:calc(100dvh - 55px);display:grid;grid-template-columns:220px 1fr 235px}
+aside{background:#111e32;padding:12px;overflow:auto;border-right:1px solid #2b405c}
+.right{border-right:0;border-left:1px solid #2b405c}
+h3{font-size:14px;margin:5px 0 12px}
+input,textarea,select{background:#091526;color:white;border:1px solid #385477;border-radius:6px;padding:8px;width:100%}
+label{display:block;color:#a9bed9;margin:12px 0 5px}
+.item{padding:10px;margin:6px 0;background:#192b43;border:1px solid #344d6c;border-radius:7px;cursor:pointer}
+.item small{display:block;color:#9eb3ce;margin-top:4px}
+#stage{position:relative;min-width:0;min-height:0}canvas{width:100%;height:100%;display:block;touch-action:none}
+.row{display:flex;gap:6px;margin:8px 0}.row button{flex:1}
+#msg{font-size:12px;color:#80dba1;margin-top:10px;overflow-wrap:anywhere}
+#hint{position:absolute;bottom:10px;left:10px;background:#101d31dd;padding:8px;border-radius:7px;font-size:12px;pointer-events:none}
+@media(max-width:760px){main{display:block}#stage{height:100%}aside{display:none;position:absolute;z-index:5;top:55px;bottom:0;width:82%;max-width:290px}aside.open{display:block}.right{right:0;left:auto}}
+</style>
+</head>
+<body>
+<header>
+<div class="logo">⚡ ElectroLab 3D</div>
+<button id="libraryBtn">Parts</button>
+<button id="settingsBtn">Settings</button>
+<button id="wireBtn">Wire OFF</button>
+<button id="saveBtn">Save</button>
+<button id="loadBtn">Load</button>
+<button id="newBtn">New</button>
+</header>
+<main>
+<aside id="library">
+<h3>Component Library</h3>
+<input id="search" placeholder="Search parts...">
+<div id="parts"></div>
+<hr>
+<h3>Enclosure</h3>
+<div class="row"><button id="addBox">Add Box</button><button id="removeBox">Remove</button></div>
+<label>Box Width</label><input id="boxWidth" type="range" min="5" max="20" value="12">
+<label>Box Depth</label><input id="boxDepth" type="range" min="4" max="16" value="8">
+<label>Box Height</label><input id="boxHeight" type="range" min="1" max="8" value="3">
+<label>Box Color</label><input id="boxColor" type="color" value="#48a9d8">
+<p style="color:#9eb3ce;font-size:12px">Part par tap karke select karein. Drag karke move karein. Wire ON karke do parts ke pins par tap karein.</p>
+</aside>
+<section id="stage"><div id="hint">Drag: Move · Mouse/touch: Camera · Wire ON: Connect pins</div></section>
+<aside class="right" id="settings">
+<h3>Selected Part</h3>
+<div id="selected" style="color:#a9bed9">Nothing selected</div>
+<label>Height</label><input id="height" type="range" min="0" max="6" step=".1" value="0">
+<label>Rotation</label><input id="rotation" type="range" min="0" max="6.28" step=".05" value="0">
+<label>Wire Color</label><input id="wireColor" type="color" value="#ff3333">
+<div class="row"><button id="duplicate">Duplicate</button><button id="delete">Delete</button></div>
+<hr>
+<h3>Project JSON</h3>
+<div class="row"><button id="export">Export</button><button id="import">Import</button></div>
+<textarea id="json" rows="6" placeholder="Project JSON"></textarea>
+<div id="msg"></div>
+</aside>
+</main>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+import {OrbitControls} from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+const $=s=>document.querySelector(s),stage=$('#stage');
+const scene=new THREE.Scene();scene.background=new THREE.Color('#091321');
+const camera=new THREE.PerspectiveCamera(45,1,.1,500);camera.position.set(17,17,22);
+const renderer=new THREE.WebGLRenderer({antialias:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.shadowMap.enabled=true;stage.appendChild(renderer.domElement);
+const controls=new OrbitControls(camera,renderer.domElement);controls.target.set(0,0,0);controls.enableDamping=true;
+scene.add(new THREE.HemisphereLight(0xc9e2ff,0x263044,2));
+const light=new THREE.DirectionalLight(0xffffff,2.3);light.position.set(10,20,12);light.castShadow=true;scene.add(light);
+const grid=new THREE.GridHelper(40,40,0x426080,0x26384e);scene.add(grid);
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(200,200),new THREE.MeshStandardMaterial({color:0x101c2b}));floor.rotation.x=-Math.PI/2;floor.position.y=-.08;scene.add(floor);
+const defs=[
+['res','Resistor','Passive',0xd6b477,'res'],
+['cap','Capacitor','Passive',0x2678d8,'cyl'],
+['pot','Potentiometer','Passive',0x303b4d,'box'],
+['ledr','Red LED','LED',0xff3333,'led'],
+['ledg','Green LED','LED',0x28df74,'led'],
+['ledb','Blue LED','LED',0x328cff,'led'],
+['ledy','Yellow LED','LED',0xffd52a,'led'],
+['trans','NPN Transistor','Semiconductors',0x20252d,'trans'],
+['ic','555 Timer IC','IC',0x171b24,'ic'],
+['battery','9V Battery','Power',0x202b3c,'battery'],
+['switch','Slide Switch','Controls',0x39485c,'box'],
+['buzzer','Buzzer','Output',0x20252d,'cyl'],
+['board','Controller Board','Boards',0x167b61,'board']
+].map(a=>({id:a[0],name:a[1],cat:a[2],color:a[3],shape:a[4]}));
+let parts=[],wires=[],selected=null,wireMode=false,wireStart=null,box=null,nextId=1;
+const material=(c)=>new THREE.MeshStandardMaterial({color:c,roughness:.55});
+function mesh(g,geo,m,x,y,z){const o=new THREE.Mesh(geo,m);o.position.set(x,y,z);o.castShadow=true;o.receiveShadow=true;g.add(o);return o}
+function makePart(def,pos=[0,0,0]){
+ const g=new THREE.Group();scene.add(g);g.position.set(...pos);
+ const body=material(def.color),gold=material(0xd5ad59),silver=material(0xb9c8d8);
+ if(def.shape==='res'){
+  let b=mesh(g,new THREE.CylinderGeometry(.34,.34,1.6,20),body,0,.65,0);b.rotation.z=Math.PI/2;
+  [-.5,-.2,.2,.5].forEach(x=>{let a=mesh(g,new THREE.CylinderGeometry(.36,.36,.07,16),gold,x,.65,0);a.rotation.z=Math.PI/2});
+ }else if(def.shape==='led'){
+  mesh(g,new THREE.CylinderGeometry(.45,.45,.75,24),body,0,.45,0);
+  mesh(g,new THREE.SphereGeometry(.44,20,14),new THREE.MeshStandardMaterial({color:def.color,emissive:def.color,emissiveIntensity:.25,transparent:true,opacity:.85}),0,.85,0);
+ }else if(def.shape==='cyl'){
+  mesh(g,new THREE.CylinderGeometry(.55,.55,1.1,24),body,0,.6,0);
+ }else if(def.shape==='ic'){
+  mesh(g,new THREE.BoxGeometry(1.8,.45,1.2),body,0,.45,0);
+  [-1,1].forEach(s=>{for(let i=0;i<4;i++)mesh(g,new THREE.BoxGeometry(.55,.08,.08),silver,s*1.05,.28,(i-1.5)*.27)});
+ }else if(def.shape==='battery'){
+  mesh(g,new THREE.BoxGeometry(1.2,1.7,.7),body,0,.85,0);
+  [-.3,.3].forEach(x=>mesh(g,new THREE.CylinderGeometry(.13,.13,.15,12),silver,x,1.8,0));
+ }else if(def.shape==='trans'){
+  mesh(g,new THREE.SphereGeometry(.58,20,16),body,0,.6,0);
+ }else if(def.shape==='board'){
+  mesh(g,new THREE.BoxGeometry(2.5,.22,1.7),body,0,.35,0);
+  mesh(g,new THREE.BoxGeometry(.8,.2,.7),material(0x222b38),0,.55,0);
+ }else mesh(g,new THREE.BoxGeometry(1.3,.7,1),body,0,.55,0);
+ const pins=[];
+ [-.48,.48].forEach((x,i)=>{let p=mesh(g,new THREE.SphereGeometry(.13,12,8),gold,x,.16,0);p.userData.pin=i;pins.push(p)});
+ const p={id:nextId++,def,group:g,pins};g.userData.part=p;parts.push(p);return p;
+}
+function findPart(o){while(o&&!o.userData.part)o=o.parent;return o?.userData.part}
+function worldPin(p,i){const v=new THREE.Vector3();p.pins[i].getWorldPosition(v);return v}
+function addWire(a,b,color){const curve=new THREE.CatmullRomCurve3([a,new THREE.Vector3((a.x+b.x)/2,Math.max(a.y,b.y)+1.2,(a.z+b.z)/2),b]);const m=new THREE.Mesh(new THREE.TubeGeometry(curve,24,.055,8,false),material(color));scene.add(m);wires.push({a:a.clone(),b:b.clone(),color,mesh:m})}
+function updateWires(){wires.forEach(w=>{scene.remove(w.mesh);w.mesh.geometry.dispose();w.mesh.material.dispose()});const old=wires.slice();wires=[];old.forEach(w=>addWire(w.a,w.b,w.color))}
+function status(s){$('#msg').textContent=s}
+function select(p){selected=p;$('#selected').textContent=p?p.def.name+' #'+p.id:'Nothing selected';if(p){$('#height').value=p.group.position.y;$('#rotation').value=p.group.rotation.y}}
+function removeSelected(){if(!selected)return;scene.remove(selected.group);parts=parts.filter(p=>p!==selected);select(null);status('Part removed')}
+function duplicate(){if(!selected)return;const p=makePart(selected.def,[selected.group.position.x+2,0,selected.group.position.z+1]);p.group.rotation.copy(selected.group.rotation);select(p)}
+function renderParts(){const q=$('#search').value.toLowerCase();$('#parts').innerHTML='';defs.filter(d=>(d.name+' '+d.cat).toLowerCase().includes(q)).forEach(d=>{const e=document.createElement('div');e.className='item';e.innerHTML='<b></b><small></small>';e.querySelector('b').textContent=d.name;e.querySelector('small').textContent=d.cat;e.onclick=()=>{const p=makePart(d,[Math.round((Math.random()-.5)*8),0,Math.round((Math.random()-.5)*8)]);select(p);status(d.name+' added')};$('#parts').append(e)})}
+$('#search').oninput=renderParts;renderParts();
+$('#height').oninput=e=>{if(selected){selected.group.position.y=+e.target.value;updateWires()}};
+$('#rotation').oninput=e=>{if(selected){selected.group.rotation.y=+e.target.value;updateWires()}};
+$('#wireBtn').onclick=()=>{wireMode=!wireMode;wireStart=null;$('#wireBtn').textContent='Wire '+(wireMode?'ON':'OFF');status(wireMode?'Do alag parts ke pins tap karein':'Wire mode off')};
+$('#wireColor').onchange=()=>status('Next wire ka color change ho gaya');
+$('#delete').onclick=removeSelected;$('#duplicate').onclick=duplicate;
+$('#newBtn').onclick=()=>{parts.forEach(p=>scene.remove(p.group));parts=[];wires.forEach(w=>scene.remove(w.mesh));wires=[];select(null);status('New project')};
+$('#addBox').onclick=()=>{if(box)scene.remove(box);const g=new THREE.Group();const geo=new THREE.BoxGeometry(12,3,8);const m=new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:$('#boxColor').value,transparent:true,opacity:.2}));g.add(m);g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x8bd5ff})));g.position.y=1.5;scene.add(g);box=g;status('Enclosure added')};
+$('#removeBox').onclick=()=>{if(box){scene.remove(box);box=null;status('Enclosure removed')}};
+function resizeBox(){if(!box)return;const w=+$('#boxWidth').value,h=+$('#boxHeight').value,d=+$('#boxDepth').value;scene.remove(box);box=null;const g=new THREE.Group(),geo=new THREE.BoxGeometry(w,h,d);g.add(new THREE.Mesh(geo,new THREE.MeshStandardMaterial({color:$('#boxColor').value,transparent:true,opacity:.2})));g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geo),new THREE.LineBasicMaterial({color:0x8bd5ff})));g.position.y=h/2;scene.add(g);box=g}
+['boxWidth','boxHeight','boxDepth','boxColor'].forEach(id=>$('#'+id).oninput=resizeBox);
+function data(){return{parts:parts.map(p=>({type:p.def.id,pos:p.group.position.toArray(),rot:p.group.rotation.toArray()})),wires:wires.map(w=>({a:w.a.toArray(),b:w.b.toArray(),color:w.color}))}}
+function loadData(d){$('#newBtn').click();(d.parts||[]).forEach(o=>{const def=defs.find(x=>x.id===o.type);if(def){const p=makePart(def,o.pos);if(o.rot)p.group.rotation.fromArray(o.rot)}});(d.wires||[]).forEach(w=>addWire(new THREE.Vector3(...w.a),new THREE.Vector3(...w.b),w.color));select(null);status('Project loaded')}
+$('#saveBtn').onclick=()=>{try{localStorage.setItem('electrolab3d',JSON.stringify(data()));status('Saved on this browser')}catch(e){status('Save unavailable; use Export')}};
+$('#loadBtn').onclick=()=>{try{const d=localStorage.getItem('electrolab3d');if(d)loadData(JSON.parse(d));else status('No saved project')}catch(e){status('Could not load project')}};
+$('#export').onclick=()=>{$('#json').value=JSON.stringify(data(),null,2);status('JSON exported')};
+$('#import').onclick=()=>{try{loadData(JSON.parse($('#json').value))}catch(e){status('Invalid JSON')}};
+$('#libraryBtn').onclick=()=>$('#library').classList.toggle('open');
+$('#settingsBtn').onclick=()=>$('#settings').classList.toggle('open');
+const ray=new THREE.Raycaster(),mouse=new THREE.Vector2(),plane=new THREE.Plane(new THREE.Vector3(0,1,0),0),point=new THREE.Vector3();let dragging=null,down=false;
+function aim(e){const r=renderer.domElement.getBoundingClientRect();mouse.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(mouse,camera)}
+renderer.domElement.addEventListener('pointerdown',e=>{down=true;aim(e);const hits=ray.intersectObjects(parts.map(p=>p.group),true);if(!hits.length){if(!wireMode)select(null);return}const p=findPart(hits[0].object);if(!p)return;if(wireMode){const pin=hits[0].object.userData.pin;if(pin===undefined)return;if(!wireStart){wireStart={p,pin};status('First pin selected; choose another part')}else if(wireStart.p!==p){addWire(worldPin(wireStart.p,wireStart.pin),worldPin(p,pin),$('#wireColor').value);wireStart=null;status('Visual wire connected')}return}select(p);dragging={p,offset:null};controls.enabled=false});
+renderer.domElement.addEventListener('pointermove',e=>{if(!down||!dragging)return;aim(e);if(ray.ray.intersectPlane(plane,point)){if(!dragging.offset)dragging.offset=dragging.p.group.position.clone().sub(point);dragging.p.group.position.x=point.x+dragging.offset.x;dragging.p.group.position.z=point.z+dragging.offset.z;updateWires()}});
+function stop(){down=false;dragging=null;controls.enabled=true}
+renderer.domElement.addEventListener('pointerup',stop);renderer.domElement.addEventListener('pointercancel',stop);
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;camera.aspect=w/h;camera.updateProjectionMatrix();renderer.setSize(w,h)}new ResizeObserver(resize).observe(stage);resize();
+function animate(){requestAnimationFrame(animate);controls.update();renderer.render(scene,camera)}animate();
+</script>
+</body>
+</html>
